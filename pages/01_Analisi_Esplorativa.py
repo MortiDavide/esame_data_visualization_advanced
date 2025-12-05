@@ -105,7 +105,7 @@ with col1:
     plt.close()
     st.pyplot(fig_g)
     
-    st.info("**Action** e **Sports** sono i generi che vendono di più. Questi sono i generi più sicuri su cui puntare.")
+    st.info("**Platform** e **Shooter** sono i generi che vendono di più. Questi sono i generi più sicuri su cui puntare.")
 
 with col2:
     st.subheader("Vendite Medie per Piattaforma")
@@ -120,7 +120,7 @@ with col2:
     plt.close()
     st.pyplot(fig_p)
     
-    st.info("**PS2** e **X360** sono le piattaforme con più vendite totali nel dataset.")
+    st.info("**GB** e **NES** sono le piattaforme con più vendite totali nel dataset.")
 
 st.divider()
 
