@@ -14,7 +14,6 @@ st.set_page_config(
 # ---------------- VARIABILI ----------------
 DATA_PATH = Path("data/vgsales_clean.csv")
 TARGET = 'Hit'
-ANNO_SPLIT = 2015
 HIT_THRESHOLD = 1.0
 
 # ---------------- UTILS ----------------
@@ -59,7 +58,7 @@ def crea_feature_storiche(df):
     df_feat = df_feat.drop(columns=['Global_Sales'], errors='ignore')
     return df_feat
 
-def addestra_modello(df_feat, anno_split):
+def addestra_modello(df_feat):
     CATEGORICAL_FEATURES = ['Genre', 'Platform', 'Publisher', 'Developer', 'Rating']
     NUMERIC_FEATURES = [
         'Publisher_Hit_Rate_Storico', 'Developer_Hit_Rate_Storico', 
@@ -69,8 +68,8 @@ def addestra_modello(df_feat, anno_split):
     df_encoded = pd.get_dummies(df_feat, columns=CATEGORICAL_FEATURES, dummy_na=False)
     FEATURES = NUMERIC_FEATURES + [col for col in df_encoded.columns if any(cat in col for cat in CATEGORICAL_FEATURES)]
     FEATURES = list(set(FEATURES))
-    X_train = df_encoded[df_encoded['Year_of_Release'] < anno_split][FEATURES]
-    y_train = df_encoded[df_encoded['Year_of_Release'] < anno_split][TARGET]
+    X_train = df_encoded[FEATURES]
+    y_train = df_encoded[TARGET]
     model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
     model.fit(X_train, y_train)
     return model, FEATURES
@@ -83,7 +82,7 @@ df = load_data()
 if "model" not in st.session_state or "FEATURES" not in st.session_state:
     df_temp = preparazione_iniziale(df.copy(), HIT_THRESHOLD)
     df_feat = crea_feature_storiche(df_temp)
-    model, FEATURES = addestra_modello(df_feat, ANNO_SPLIT)
+    model, FEATURES = addestra_modello(df_feat)
     st.session_state.model = model
     st.session_state.FEATURES = FEATURES
     st.session_state.df_feat = df_feat
@@ -176,8 +175,6 @@ if st.session_state.prediction is not None:
     col_res1, col_res2 = st.columns(2)
     col_res1.metric("Probabilità di HIT", f"{proba:.1%}")
     col_res2.metric("Rischio stimato", "ALTO" if proba >= 0.5 else "BASSO")
-    st.write("Valori inseriti:")
-    st.json(user_input)
     st.info("⚠️ Questa stima è indicativa, basata su dati storici.")
 
 
