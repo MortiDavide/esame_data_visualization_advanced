@@ -45,3 +45,25 @@ col3.metric("Numero generi", df["Genre"].nunique())
 
 with st.expander("Mostra prime righe del dataset"):
     st.dataframe(df.head())
+
+
+# ANALISI GENERALE ---------------------------------
+col1, col2 = st.columns(2)
+
+with col1:
+    genre_sales = df.groupby("Genre")["Global_Sales"].sum().sort_values()
+
+    fig_g, ax_g = plt.subplots(figsize=(8, 7))
+    genre_sales.plot(kind="barh", ax=ax_g)
+    ax_g.set_title("Vendite globali per genere")
+    ax_g.set_xlabel("Milioni di copie")
+    st.pyplot(fig_g)
+
+with col2:
+    platform_sales = df.groupby("Platform")["Global_Sales"].sum().sort_values()
+
+    fig_p, ax_p = plt.subplots(figsize=(8, 7))
+    platform_sales.plot(kind="barh", ax=ax_p, color="purple")
+    ax_p.set_title("Vendite globali per piattaforma")
+    ax_p.set_xlabel("Milioni di copie")
+    st.pyplot(fig_p)
