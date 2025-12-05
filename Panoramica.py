@@ -41,6 +41,60 @@ def load_data() -> pd.DataFrame:
 # --------------------------------- APP ---------------------------------
 df = load_data()
 
+# SIDEBAR ---------------------------------
+with st.sidebar:
+    
+    st.header("🔍 Filtri Dataset")
+    
+    # Filtro per anno
+    min_year = int(df['Year_of_Release'].min())
+    max_year = int(df['Year_of_Release'].max())
+    year_range = st.slider(
+        "Seleziona range di anni:",
+        min_value=min_year,
+        max_value=max_year,
+        value=(min_year, max_year)
+    )
+    
+    # Filtro per piattaforme
+    all_platforms = sorted(df['Platform'].unique().tolist())
+    selected_platforms = st.multiselect(
+        "Filtra per piattaforme:",
+        options=all_platforms,
+        default=all_platforms,
+        help="Lascia vuoto per mostrare tutte"
+    )
+    
+    # Filtro per generi
+    all_genres = sorted(df['Genre'].unique().tolist())
+    selected_genres = st.multiselect(
+        "Filtra per generi:",
+        options=all_genres,
+        default=all_genres,
+        help="Lascia vuoto per mostrare tutti"
+    )
+
+# Applica filtri al dataframe
+if selected_platforms and selected_genres:
+    df = df[
+        (df['Year_of_Release'] >= year_range[0]) & 
+        (df['Year_of_Release'] <= year_range[1]) &
+        (df['Platform'].isin(selected_platforms)) &
+        (df['Genre'].isin(selected_genres))
+    ]
+
+
+# Applica filtri al dataframe
+filtered_df = df.copy()
+if selected_platforms:
+    filtered_df = filtered_df[filtered_df['Platform'].isin(selected_platforms)]
+if selected_genres:
+    filtered_df = filtered_df[filtered_df['Genre'].isin(selected_genres)]
+filtered_df = filtered_df[
+    (filtered_df['Year_of_Release'] >= year_range[0]) & 
+    (filtered_df['Year_of_Release'] <= year_range[1])
+]
+
 # TITOLO PRINCIPALE ---------------------------------
 st.title("🎮 Analisi Esplorativa delle Vendite di Videogiochi")
 st.markdown("Dashboard interattiva per esplorare i dati delle vendite di videogiochi. Questa analisi è pensata per aiutare il team di analytics a capire quali piattaforme e generi funzionano meglio.")
@@ -70,7 +124,6 @@ st.divider()
 
 with st.expander("Mostra prime righe del dataset"):
     st.dataframe(df.head())
-
 
 
 
