@@ -108,8 +108,8 @@ with cols[1]:
     user_input["Year_of_Release"] = st.number_input(
         "Anno di uscita",
         min_value=int(df_feat["Year_of_Release"].min()),
-        max_value=int(df_feat["Year_of_Release"].max()) + 1,
-        value=int(df_feat["Year_of_Release"].max()) + 1,
+        max_value=2025,
+        value=2025,
         step=1
     )
 with cols[2]:
@@ -130,8 +130,18 @@ with cols2[1]:
         options=df_feat["Rating"].dropna().unique().tolist()
     )
 
-user_input["Publisher"] = "Nuovo"
-user_input["Developer"] = "Nuovo"
+cols3 = st.columns(2)
+with cols3[0]:
+    user_input["Publisher"] = st.selectbox(
+        "Publisher",
+        options=sorted(df_feat["Publisher"].astype(str).unique())
+    )
+with cols3[1]:
+    user_input["Developer"] = st.selectbox(
+        "Developer",
+        options=sorted(df_feat["Developer"].astype(str).unique())
+    )
+
 user_input["Publisher_Hit_Rate_Storico"] = media_hit_generale
 user_input["Developer_Hit_Rate_Storico"] = media_hit_generale
 user_input["Genre_Hit_Rate_Storico"] = media_hit_generale
