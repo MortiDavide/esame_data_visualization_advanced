@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import LabelEncoder
 
 # PAGE CONGFIG ---------------------------------
@@ -45,159 +45,153 @@ df = pd.read_csv(DATA_PATH)
 
 # Definisci la soglia per l'HIT (>= 1 milione di copie globali)
 HIT_THRESHOLD = 1.0 
+TARGET = 'Hit'
+ANNO_SPLIT = 2015 # Anno di split ottimizzato per la validazione
+
+# --- 1. Preparazione Iniziale ---
 
 def preparazione_iniziale(df, threshold):
     """Pulisce i dati e crea la variabile target 'Hit'."""
-    print("Inizio preparazione dati...")
+    print("1. Inizio preparazione dati...")
     
-    # Pulizia e conversione Year_of_Release
     df = df.dropna(subset=['Year_of_Release'])
     df['Year_of_Release'] = df['Year_of_Release'].astype(int)
     
-    # Gestione valori mancanti per le feature categoriche
     for col in ['Publisher', 'Developer', 'Rating']:
         df[col] = df[col].fillna('Sconosciuto')
         
-    # Creazione della Variabile Target: Hit
     df['Hit'] = (df['Global_Sales'] >= threshold).astype(int)
     
-    # Ordina i dati per anno (necessario per il lookback temporale)
+    # Ordina i dati per anno
     df = df.sort_values(by='Year_of_Release').reset_index(drop=True)
     
-    # Rimuovi colonne non utili o che causano Data Leakage (come le vendite)
-    df_clean = df.drop(columns=['Name', 'NA_Sales', 'EU_Sales', 'JP_Sales', 'Other_Sales', 'Critic_Score', 'Critic_Count', 'User_Score', 'User_Count'], errors='ignore')
-    
+    # Rimuovi le colonne non utili/di leakage, mantenendo Global_Sales per il calcolo storico
+    df_clean = df.drop(columns=['Name', 'NA_Sales', 'EU_Sales', 'JP_Sales', 'Other_Sales', 
+                                'Critic_Score', 'Critic_Count', 'User_Score', 'User_Count'], errors='ignore')
     return df_clean
 
-df_base = preparazione_iniziale(df.copy(), HIT_THRESHOLD)
+# --- 2. Feature Engineering Storico (Funzione Riutilizzabile) ---
+
+def calculate_historical_feature(df, group_col, target_col, feature_name, default_value):
+    """Calcola la media storica (Hit Rate o Sales Avg) per una colonna categorica."""
+    
+    df_temp = df.copy()
+    
+    # 1. Calcola la media globale (fallback)
+    global_mean = df_temp[target_col].mean()
+
+    # 2. Inizializza la colonna storica
+    df_temp[feature_name] = np.nan
+    
+    # Itera attraverso gli anni unici
+    anni_unici = sorted(df_temp['Year_of_Release'].unique())
+    
+    for anno in anni_unici:
+        # Dati storici (precedenti all'anno corrente)
+        df_storico = df_temp[df_temp['Year_of_Release'] < anno]
+        idx_anno_corrente = df_temp[df_temp['Year_of_Release'] == anno].index
+        
+        if not df_storico.empty:
+            # Calcola la mappa di Target Encoding / Average Sales
+            map_values = df_storico.groupby(group_col)[target_col].mean().to_dict()
+            
+            # Applica e gestisce le categorie nuove (fillna con la media generale)
+            nuovi_valori = df_temp.loc[idx_anno_corrente, group_col].map(map_values).fillna(global_mean)
+            df_temp.loc[idx_anno_corrente, feature_name] = nuovi_valori
+
+    # 3. Riempimento finale: copre il primo anno e le categorie non viste
+    df_temp[feature_name] = df_temp[feature_name].fillna(global_mean)
+    
+    return df_temp[feature_name]
 
 
 def crea_feature_storiche(df):
-    """
-    Crea le feature storiche (Hit Rate e Average Sales) utilizzando solo i dati 
-    precedenti all'anno di rilascio di ciascun gioco per prevenire Data Leakage.
-    """
+    """Applica la funzione di calcolo storico per tutte le feature richieste."""
+    print("2. Creazione Feature Storiche...")
     df_feat = df.copy()
     
-    # Colonne per cui calcolare la Hit Rate Storica (A, B, C, D)
+    # A, B, C, D: Hit Rate Storico (Target: Hit)
     hit_rate_cols = ['Publisher', 'Developer', 'Genre', 'Platform']
-    
-    # Colonne per cui calcolare le Average Sales Storiche (E, F)
+    for col in hit_rate_cols:
+        feature_name = f'{col}_Hit_Rate_Storico'
+        df_feat[feature_name] = calculate_historical_feature(
+            df_feat, col, TARGET, feature_name, df_feat[TARGET].mean()
+        )
+        
+    # E, F: Average Global Sales Storiche (Target: Global_Sales)
     avg_sales_cols = ['Publisher', 'Genre']
-    
-    # Inizializza i placeholder (Useremo un valore NaN o la media generale per il fill-in)
-    for col in hit_rate_cols:
-        df_feat[f'{col}_Hit_Rate_Storico'] = np.nan
     for col in avg_sales_cols:
-        df_feat[f'{col}_Avg_Global_Sales_Storico'] = np.nan
-
-    # Calcola la media di Hit e Sales su tutto il dataset pulito
-    media_hit_generale = df_feat['Hit'].mean()
-    media_sales_generale = df_feat['Global_Sales'].mean()
-
-    # Itera attraverso gli anni unici del dataset, escludendo il primo
-    anni_unici = sorted(df_feat['Year_of_Release'].unique())
-    
-    for anno in anni_unici:
-        # Dati passati (lookback): tutti i giochi rilasciati prima dell'anno corrente
-        df_storico = df_feat[df_feat['Year_of_Release'] < anno]
+        feature_name = f'{col}_Avg_Global_Sales_Storico'
+        df_feat[feature_name] = calculate_historical_feature(
+            df_feat, col, 'Global_Sales', feature_name, df_feat['Global_Sales'].mean()
+        )
         
-        # Dati correnti: giochi rilasciati nell'anno corrente
-        idx_anno_corrente = df_feat[df_feat['Year_of_Release'] == anno].index
-        
-        # Se non ci sono dati storici (primo anno), si riempie con la media generale
-        if df_storico.empty:
-            continue
-            
-        # 1. Calcolo Hit Rate Storico (A, B, C, D)
-        for col in hit_rate_cols:
-            rate_map = df_storico.groupby(col)['Hit'].mean().to_dict()
-            nuovi_valori = df_feat.loc[idx_anno_corrente, col].map(rate_map).fillna(media_hit_generale)
-            df_feat.loc[idx_anno_corrente, f'{col}_Hit_Rate_Storico'] = nuovi_valori
-            
-        # 2. Calcolo Average Global Sales Storiche (E, F)
-        for col in avg_sales_cols:
-            sales_map = df_storico.groupby(col)['Global_Sales'].mean().to_dict()
-            nuovi_valori = df_feat.loc[idx_anno_corrente, col].map(sales_map).fillna(media_sales_generale)
-            df_feat.loc[idx_anno_corrente, f'{col}_Avg_Global_Sales_Storico'] = nuovi_valori
-
-    # Riempi i NaN rimanenti (per il primissimo anno o categorie mai viste) con la media generale
-    for col in hit_rate_cols:
-        df_feat[f'{col}_Hit_Rate_Storico'] = df_feat[f'{col}_Hit_Rate_Storico'].fillna(media_hit_generale)
-        
-    for col in avg_sales_cols:
-        df_feat[f'{col}_Avg_Global_Sales_Storico'] = df_feat[f'{col}_Avg_Global_Sales_Storico'].fillna(media_sales_generale)
-
-    print("Feature storiche create e applicate.")
+    # Rimuovi la colonna di vendita originale
+    df_feat = df_feat.drop(columns=['Global_Sales'], errors='ignore')
     return df_feat
 
-# Re-includiamo 'Global_Sales' nel set di dati pulito per il calcolo delle medie
+# --- 3. Modeling ---
+
+def addestra_e_valuta(df_feat, anno_split):
+    """Esegue One-Hot Encoding, Split Temporale, Addestramento e Valutazione."""
+    print("3. Addestramento e Valutazione del Modello...")
+    
+    CATEGORICAL_FEATURES = ['Genre', 'Platform', 'Publisher', 'Developer', 'Rating']
+    NUMERIC_FEATURES = [
+        'Publisher_Hit_Rate_Storico', 'Developer_Hit_Rate_Storico', 
+        'Genre_Hit_Rate_Storico', 'Platform_Hit_Rate_Storico', 
+        'Publisher_Avg_Global_Sales_Storico', 'Genre_Avg_Global_Sales_Storico'
+    ]
+    
+    # One-Hot Encoding
+    df_encoded = pd.get_dummies(df_feat, columns=CATEGORICAL_FEATURES, dummy_na=False)
+    
+    # Definizione delle feature finali
+    FEATURES = NUMERIC_FEATURES + [col for col in df_encoded.columns if any(cat in col for cat in CATEGORICAL_FEATURES)]
+    FEATURES = list(set(FEATURES)) 
+
+    # Split Temporale
+    X_train = df_encoded[df_encoded['Year_of_Release'] < anno_split][FEATURES]
+    y_train = df_encoded[df_encoded['Year_of_Release'] < anno_split][TARGET]
+    X_test = df_encoded[df_encoded['Year_of_Release'] >= anno_split][FEATURES]
+    y_test = df_encoded[df_encoded['Year_of_Release'] >= anno_split][TARGET]
+
+    # Allinea le colonne (cruciale per OHE)
+    common_cols = list(set(X_train.columns) & set(X_test.columns))
+    X_train = X_train[common_cols]
+    X_test = X_test[common_cols]
+    FEATURES = common_cols # Aggiorna la lista FEATURES
+    
+    print(f"   Training Set (pre {anno_split}): {X_train.shape[0]} oss.")
+    print(f"   Test Set (dal {anno_split}): {X_test.shape[0]} oss.")
+
+    # Modello
+    model = GradientBoostingClassifier(
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=3,
+        random_state=42
+    )
+
+    model.fit(X_train, y_train)
+
+    # Valutazione
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    auc_score = roc_auc_score(y_test, y_pred_proba)
+
+    # Importanza delle Feature
+    importanze = pd.Series(model.feature_importances_, index=FEATURES).sort_values(ascending=False)
+    
+    return auc_score, importanze
+
+
+# --- Esecuzione Principale ---
+
 df_temp = preparazione_iniziale(df.copy(), HIT_THRESHOLD)
 df_feat = crea_feature_storiche(df_temp)
+auc_score, importanze = addestra_e_valuta(df_feat, ANNO_SPLIT)
 
-
-
-# 3.1. Definizione delle Feature
-TARGET = 'Hit'
-
-# Feature numeriche (quelle che abbiamo appena creato)
-NUMERIC_FEATURES = [
-    'Publisher_Hit_Rate_Storico', 'Developer_Hit_Rate_Storico', 
-    'Genre_Hit_Rate_Storico', 'Platform_Hit_Rate_Storico', 
-    'Publisher_Avg_Global_Sales_Storico', 'Genre_Avg_Global_Sales_Storico'
-]
-
-# Feature categoriche (quelle originali, verranno gestite nativamente da LightGBM)
-CATEGORICAL_FEATURES = ['Genre', 'Platform', 'Publisher', 'Developer', 'Rating']
-
-# La Year_of_Release viene usata solo per lo split, non come feature di training
-FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
-
-
-# 3.2. Split Temporale dei Dati
-# Usiamo l'ultimo anno del dataset come set di test
-ANNO_TEST = df_feat['Year_of_Release'].max()
-
-X_train = df_feat[df_feat['Year_of_Release'] < ANNO_TEST][FEATURES]
-y_train = df_feat[df_feat['Year_of_Release'] < ANNO_TEST][TARGET]
-X_test = df_feat[df_feat['Year_of_Release'] == ANNO_TEST][FEATURES]
-y_test = df_feat[df_feat['Year_of_Release'] == ANNO_TEST][TARGET]
-
-print(f"\nTraining Set (pre {ANNO_TEST}): {X_train.shape[0]} osservazioni")
-print(f"Test Set (anno {ANNO_TEST}): {X_test.shape[0]} osservazioni")
-
-# Converti le colonne categoriche in tipo 'category' (richiesto da LightGBM)
-for col in CATEGORICAL_FEATURES:
-    X_train[col] = X_train[col].astype('category')
-    X_test[col] = X_test[col].astype('category')
-
-# 3.3. Addestramento del Modello (LightGBM)
-print("\nAddestramento del Modello LightGBM...")
-
-lgbm = lgb.LGBMClassifier(
-    objective='binary',
-    metric='auc',
-    random_state=42,
-    n_estimators=100,
-    learning_rate=0.05,
-    categorical_feature=CATEGORICAL_FEATURES,
-    n_jobs=-1 # Usa tutti i core
-)
-
-lgbm.fit(X_train, y_train)
-
-# 3.4. Valutazione del Modello
-# Previsione delle probabilità (necessaria per l'AUC)
-y_pred_proba = lgbm.predict_proba(X_test)[:, 1]
-
-# Calcolo dell'Area Under the Curve (AUC)
-auc_score = roc_auc_score(y_test, y_pred_proba)
-
-print(f"--- Risultati del Modello (Anno Test: {ANNO_TEST}) ---")
+print("\n--- Risultati Finali del Modello ---")
 print(f"Area Sotto la Curva ROC (AUC): {auc_score:.4f}")
-
-# 3.5. Analisi dell'Importanza delle Feature
-importanze = pd.Series(lgbm.feature_importances_, index=FEATURES).sort_values(ascending=False)
-
-print("\nImportanza delle Feature:")
-print(importanze)
+print("\nImportanza delle Feature (Top 10):")
+print(importanze.head(10))
