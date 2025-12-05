@@ -31,25 +31,6 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-# --------------------------------- APP ---------------------------------
 df = load_data()
 
-st.title("🎮 Videogames Sales – Analytics Dashboard")
-st.caption("Dashboard esplorativa del catalogo videogiochi con dati di vendita globali")
-
-# PANORAMICA ---------------------------------
-st.subheader("📊 Panoramica del Dataset")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric("Numero giochi", len(df))
-col2.metric("Numero piattaforme", df["Platform"].nunique())
-col3.metric("Numero generi", df["Genre"].nunique())
-
-with st.expander("Mostra prime righe del dataset"):
-    st.dataframe(df.head())
-
-
-
-
-
+# MODELLO DI PREDIZIONE ---------------------------------   
