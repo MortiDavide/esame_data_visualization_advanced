@@ -108,7 +108,7 @@ with cols[1]:
     user_input["Year_of_Release"] = st.number_input(
         "Anno di uscita",
         min_value=int(df_feat["Year_of_Release"].min()),
-        max_value=2025,
+        max_value=2100,
         value=2025,
         step=1
     )
