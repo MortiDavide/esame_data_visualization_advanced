@@ -73,9 +73,6 @@ with st.sidebar:
         default=all_genres,
         help="Lascia vuoto per mostrare tutti"
     )
-    
-    st.markdown("---")
-    st.caption("Ciao")
 
 # Applica filtri al dataframe
 if selected_platforms and selected_genres:
