@@ -68,6 +68,9 @@ with col4:
 
 st.divider()
 
+with st.expander("Mostra prime righe del dataset"):
+    st.dataframe(df.head())
+
 
 
 

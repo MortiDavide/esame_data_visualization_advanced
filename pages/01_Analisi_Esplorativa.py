@@ -43,17 +43,6 @@ df = load_data()
 
 # SIDEBAR ---------------------------------
 with st.sidebar:
-
-    st.header("ℹ️ Informazioni")
-    st.markdown("""
-    **Dataset:** Video Game Sales
-    
-    **Periodo:** 1980 - 2016
-    
-    **Righe totali:** {:,}
-    
-    **Colonne:** 16
-    """.format(len(df)))
     
     st.header("🔍 Filtri Dataset")
     
