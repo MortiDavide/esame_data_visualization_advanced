@@ -1,3 +1,5 @@
 venv
 EDA.py
 .venv
+pyptoject.toml
+uv.lock
