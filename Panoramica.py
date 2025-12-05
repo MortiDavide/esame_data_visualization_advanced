@@ -2,10 +2,10 @@ import streamlit as st
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 
 
-# PAGE CONGFIG ---------------------------------
+
+# PAGE CONFIG ---------------------------------
 st.set_page_config(
     page_title="Videogames Sales – Analytics Dashboard",
     layout="wide",
@@ -21,33 +21,52 @@ SALES_COLS = ["NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales", "Global_Sales"]
 @st.cache_data
 def load_data() -> pd.DataFrame:
     df = pd.read_csv(DATA_PATH)
-
-    #Years_of_Release è una colonna float, quindi la converto in int
-    df["Year_of_Release"] = pd.to_numeric(df["Year_of_Release"], errors="coerce")
-
-    #User_Score è una colonna che contiene "tbd" per i giochi senza voti, quindi la converto in numerica
-    df["User_Score"] = pd.to_numeric(df["User_Score"], errors="coerce")
-
+    
+    # pulizia dati come nel notebook
+    df['Name'] = df['Name'].fillna('Unknown')
+    df['Genre'] = df['Genre'].fillna('Unknown')
+    df['Publisher'] = df['Publisher'].fillna('Unknown')
+    df['Developer'] = df['Developer'].fillna('Unknown')
+    df['Rating'] = df['Rating'].fillna('Unknown')
+    
+    # per l'anno metto il valore più frequente
+    year_mode = df['Year_of_Release'].mode()[0]
+    df['Year_of_Release'] = df['Year_of_Release'].fillna(year_mode)
+    
+    # converto User_Score in numero
+    df['User_Score'] = pd.to_numeric(df['User_Score'], errors='coerce')
+    
     return df
-
 
 # --------------------------------- APP ---------------------------------
 df = load_data()
 
-st.title("🎮 Videogames Sales – Analytics Dashboard")
-st.caption("Dashboard esplorativa del catalogo videogiochi con dati di vendita globali")
+# TITOLO PRINCIPALE ---------------------------------
+st.title("🎮 Analisi Esplorativa delle Vendite di Videogiochi")
+st.markdown("Dashboard interattiva per esplorare i dati delle vendite di videogiochi. Questa analisi è pensata per aiutare il team di analytics a capire quali piattaforme e generi funzionano meglio.")
 
-# PANORAMICA ---------------------------------
-st.subheader("📊 Panoramica del Dataset")
+if len(df) == 0:
+    st.warning("⚠️ Nessun dato disponibile con i filtri selezionati. Prova a modificare i filtri nella sidebar.")
+    st.stop()
 
-col1, col2, col3 = st.columns(3)
+# STATISTICHE GENERALI ---------------------------------
+st.header("📊 Panoramica Generale")
 
-col1.metric("Numero giochi", len(df))
-col2.metric("Numero piattaforme", df["Platform"].nunique())
-col3.metric("Numero generi", df["Genre"].nunique())
+col1, col2, col3, col4 = st.columns(4)
 
-with st.expander("Mostra prime righe del dataset"):
-    st.dataframe(df.head())
+with col1:
+    st.metric("Totale Giochi", f"{len(df):,}")
+
+with col2:
+    st.metric("Vendite Globali Totali", f"{df['Global_Sales'].sum():.2f}M")
+
+with col3:
+    st.metric("Numero di Generi", f"{df['Genre'].nunique()}")
+
+with col4:
+    st.metric("Numero di Piattaforme", f"{df['Platform'].nunique()}")
+
+st.divider()
 
 
 
